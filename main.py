@@ -2,6 +2,8 @@ import socket
 import robotAuthentication as auth
 import moveRobot as mv
 import helpers
+import robotControllers
+
 HOST = '127.0.0.1'
 PORT = 54322
 
@@ -14,6 +16,7 @@ def run_server(HOST, PORT):
         print('Connection from', addr)
         auth.robotAuthentication(client_sock)
         mv.findCurrentdirectionPosition(client_sock)
+
 
 if __name__ == '__main__':
     run_server(HOST, PORT)
