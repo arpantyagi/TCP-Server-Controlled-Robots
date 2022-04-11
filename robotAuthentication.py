@@ -23,10 +23,12 @@ def robotAuthentication(sock):
     received_data = sock.recv(4096)
     key = int(received_data[:-2].decode())
     if not received_data:
-        sock.close()
+        return False
 
     if (int(key) > 4 or int(key) < 0):
         sock.sendall(Constants.SERVER_KEY_OUT_OF_RANGE_ERROR.encode())
+        return False
+
     hash = helpers.calculateHash(userName, key)
     sock.sendall(f"{str(hash)}\a\b".encode())
 
@@ -38,9 +40,10 @@ def robotAuthentication(sock):
 
     if( recvHash != helpers.calculateHash(userName, key, True)):
         sock.sendall(Constants.SERVER_LOGIN_FAILED.encode())
-        helpers.closeConnection(sock)
-
-    sock.sendall(Constants.SERVER_OK.encode())
+        return False
+    else :
+        sock.sendall(Constants.SERVER_OK.encode())
+        return True
 
     print("Authentication Complete!")
     #helpers.closeConnection(sock)

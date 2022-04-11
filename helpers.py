@@ -17,5 +17,16 @@ def calculateHash(userName, key, client=False):
         return ((sum * 1000) % 65536 + authenticationKeys[key][1]) % 65536
     return ((sum * 1000) %  65536 + authenticationKeys[key][0]) % 65536
 
+def receiveClientMessage(sock):
+
+    sock.settimeout(1)
+    message = b''
+    while True:
+        received_data = sock.recv(4096)
+        message = message + received_data
+
+        if received_data[-2:] == b'\a\b' :
+            return message.decode()
+
 
 
