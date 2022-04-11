@@ -1,11 +1,12 @@
 import Constants
+import helpers
+
 
 robotDirection = 0
 robotCoords = []
 
 
 def extractCoordinates(string):
-    string = string[:-2]
     coordinates = []
     for item in string.split():
         try:
@@ -44,21 +45,21 @@ class robotController:
     #
     #     self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
     #     self.r_sock.sendall(Constants.SERVER_MOVE.encode())
-    #     received_data = self.r_sock.recv(4096)
-    #     coords1 = extractCoordinates(received_data.decode())
+    #     received_data = helpers.receiveClientMessage(self.r_sock)
+    #     coords1 = extractCoordinates(received_data)
     #     self.r_previousCoords = self.r_coords
     #     self.r_coords = coords1
     #     self.findDirection()
 
     def findCurrentdirectionPosition(self):
         self.r_sock.sendall(Constants.SERVER_MOVE.encode())
-        received_data = self.r_sock.recv(4096)
-        self.r_coords = extractCoordinates(received_data.decode())
+        received_data = helpers.receiveClientMessage(self.r_sock)
+        self.r_coords = extractCoordinates(received_data)
 
         self.r_sock.sendall(Constants.SERVER_MOVE.encode())
-        received_data = self.r_sock.recv(4096)
+        received_data = helpers.receiveClientMessage(self.r_sock)
         self.r_previousCoords = self.r_coords
-        self.r_coords = extractCoordinates(received_data.decode())
+        self.r_coords = extractCoordinates(received_data)
 
         self.r_direction = self.findDirection()
 
@@ -96,24 +97,24 @@ class robotController:
 
         if self.r_direction == 2:
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 1
             return
 
         if self.r_direction == 3:
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 1
             return
 
         if self.r_direction == 4:
             self.r_sock.sendall(Constants.SERVER_TURN_LEFT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 1
             return
@@ -121,10 +122,10 @@ class robotController:
     def changeDirectionLeft(self):
         if self.r_direction == 1:
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 2
             return
@@ -134,27 +135,27 @@ class robotController:
 
         if self.r_direction == 3:
             self.r_sock.sendall(Constants.SERVER_TURN_LEFT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 2
 
         if self.r_direction == 4:
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 2
 
     def changeDirectionUp(self):
         if self.r_direction == 1:
             self.r_sock.sendall(Constants.SERVER_TURN_LEFT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 3
             return
 
         if self.r_direction == 2:
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 3
             return
@@ -164,10 +165,10 @@ class robotController:
 
         if self.r_direction == 4:
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 3
             return
@@ -175,24 +176,24 @@ class robotController:
     def changeDirectionDown(self):
         if self.r_direction == 1:
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 4
             return
 
         if self.r_direction == 2:
             self.r_sock.sendall(Constants.SERVER_TURN_LEFT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 4
             return
 
         if self.r_direction == 3:
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_sock.sendall(Constants.SERVER_TURN_RIGHT.encode())
-            received_data = self.r_sock.recv(1024)
+            received_data = helpers.receiveClientMessage(self.r_sock)
             # check if we have received ok
             self.r_direction = 4
             return
@@ -252,7 +253,7 @@ class robotController:
     def checkIfReachedDestination(self):
         if self.r_coords == [0, 0]:
             self.r_sock.sendall(Constants.SERVER_PICK_UP.encode())
-            received_data = self.r_sock.recv(4096)
+            received_data = helpers.receiveClientMessage(self.r_sock)
 
             self.r_sock.sendall(Constants.SERVER_LOGOUT.encode())
             self.r_sock.close()
@@ -260,8 +261,8 @@ class robotController:
 
     def move(self):
         self.r_sock.sendall(Constants.SERVER_MOVE.encode())
-        received_data = self.r_sock.recv(4096)
-        coords1 = extractCoordinates(received_data.decode())
+        received_data = helpers.receiveClientMessage(self.r_sock)
+        coords1 = extractCoordinates(received_data)
         self.r_previousCoords = self.r_coords
         self.r_coords = coords1
         if self.detectObstacle():

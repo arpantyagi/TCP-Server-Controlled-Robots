@@ -10,8 +10,8 @@ check username
 def robotAuthentication(sock):
 
     # Get username
-    received_data = sock.recv(4096)
-    userName = received_data[:-2].decode()
+    received_data = helpers.receiveClientMessage(sock)
+    userName = received_data
     if not received_data:
         sock.close()
 
@@ -20,8 +20,8 @@ def robotAuthentication(sock):
 
 
     # Get which key to use
-    received_data = sock.recv(4096)
-    key = int(received_data[:-2].decode())
+    received_data = helpers.receiveClientMessage(sock)
+    key = int(received_data)
     if not received_data:
         return False
 
@@ -35,8 +35,8 @@ def robotAuthentication(sock):
 
 
     # Check hash from client side
-    received_data = sock.recv(4096)
-    recvHash = int(received_data[:-2].decode())
+    received_data = helpers.receiveClientMessage(sock)
+    recvHash = int(received_data)
 
     if( recvHash != helpers.calculateHash(userName, key, True)):
         sock.sendall(Constants.SERVER_LOGIN_FAILED.encode())
