@@ -3,9 +3,8 @@
 # at FIT CVUT
 
 import socket
-import robotAuthentication as auth
-import helpers
-import moveRobot
+
+from RobotConnectionHandler import RobotConnectionHandler
 
 HOST = '127.0.0.1'
 PORT = 54321
@@ -20,13 +19,13 @@ def run_server(HOST, PORT):
 
         client_sock, addr = sock.accept()
         print('Connection from', addr)
+        #client_sock.settimeout(1)
+        robot = RobotConnectionHandler(client_sock)
 
-        if not auth.robotAuthentication(client_sock) :
-            helpers.closeConnection(client_sock)
-        else :
-            robo = moveRobot.robotController(client_sock)
-            robo.findCurrentdirectionPosition()
-            robo.guideToTarget()
+        if robot.authenticateConnection():
+            if robot.findCurrentPosition():
+                robot.guideToTarget()
+
 
 if __name__ == '__main__':
     run_server(HOST, PORT)
