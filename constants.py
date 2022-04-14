@@ -29,3 +29,9 @@ CLIENT_OK_MAX_LEN = 10
 CLIENT_RECHARGING_MAX_LEN = 10
 CLIENT_FULL_POWER_MAX_LEN = 10
 CLIENT_MESSAGE_MAX_LEN = 98
+
+AUTHENTICATIONKEYS = {0: (23019, 32037),
+                      1: (32037, 29295),
+                      2: (18789, 13603),
+                      3: (16443, 29533),
+                      4: (18189, 21952)}

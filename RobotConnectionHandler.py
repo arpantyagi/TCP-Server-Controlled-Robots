@@ -1,8 +1,3 @@
-authenticationKeys = {0: (23019, 32037),
-                      1: (32037, 29295),
-                      2: (18789, 13603),
-                      3: (16443, 29533),
-                      4: (18189, 21952)}
 
 import constants
 
@@ -19,6 +14,7 @@ class RobotConnectionHandler:
         self.r_previousCoords = None
         self.r_direction = None
         self.r_pipe = str()
+        self.reachedDestination = False
 
     def closeConnection(self):
         print('Client disconnected:', self.r_sock.getpeername())
@@ -30,13 +26,12 @@ class RobotConnectionHandler:
             hashSum = hashSum + ord(char)
 
         if (client):
-            return ((hashSum * 1000) % 65536 + authenticationKeys[self.r_key][1]) % 65536
-        result = ((hashSum * 1000) % 65536 + authenticationKeys[self.r_key][0]) % 65536
-        return result
+            return ((hashSum * 1000) % 65536 + constants.AUTHENTICATIONKEYS[self.r_key][1]) % 65536
+        return ((hashSum * 1000) % 65536 + constants.AUTHENTICATIONKEYS[self.r_key][0]) % 65536
 
     def receiveMessage(self):
         while True:
-          #  self.r_sock.settimeout(1)
+            self.r_sock.settimeout(1)
             received_data = self.r_sock.recv(18).decode()
             self.r_pipe += received_data
 
@@ -138,11 +133,12 @@ class RobotConnectionHandler:
 
     def tryEveryDirection(self):
 
+        print("Encountered Obstacle without knowing direction")
         self.sendMessage(constants.SERVER_TURN_RIGHT)
         self.findCurrentPosition()
 
     def findDirection(self):
-
+        print("trying to find direction")
         if self.r_coords[0] - self.r_previousCoords[0] == 1:
             self.r_direction = 1  # right
         elif self.r_coords[0] - self.r_previousCoords[0] == -1:
@@ -180,14 +176,16 @@ class RobotConnectionHandler:
         
     def checkIfReachedDestination(self):
         if self.r_coords == [0, 0]:
+            print("Reached Origin")
             self.sendMessage(constants.SERVER_PICK_UP)
+            self.reachedDestination = True
             received_data = self.receiveMessage()
-
             self.sendMessage(constants.SERVER_LOGOUT)
             self.closeConnection()
             return True
 
     def changeDirectionRight(self):
+        print("Changing Direction to East")
         if self.r_direction == 1:
             return
 
@@ -216,89 +214,93 @@ class RobotConnectionHandler:
             return
 
     def changeDirectionLeft(self):
-            if self.r_direction == 1:
-                self.sendMessage(constants.SERVER_TURN_RIGHT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.sendMessage(constants.SERVER_TURN_RIGHT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.r_direction = 2
-                return
+        print("Changing Direction to West")
+        if self.r_direction == 1:
+            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.r_direction = 2
+            return
 
-            if self.r_direction == 2:
-                return
+        if self.r_direction == 2:
+            return
 
-            if self.r_direction == 3:
-                self.sendMessage(constants.SERVER_TURN_LEFT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.r_direction = 2
+        if self.r_direction == 3:
+            self.sendMessage(constants.SERVER_TURN_LEFT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.r_direction = 2
 
-            if self.r_direction == 4:
-                self.sendMessage(constants.SERVER_TURN_RIGHT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.r_direction = 2
+        if self.r_direction == 4:
+            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.r_direction = 2
 
     def changeDirectionUp(self):
-            if self.r_direction == 1:
-                self.sendMessage(constants.SERVER_TURN_LEFT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.r_direction = 3
-                return
+        print("Changing Direction to North")
+        if self.r_direction == 1:
+            self.sendMessage(constants.SERVER_TURN_LEFT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.r_direction = 3
+            return
 
-            if self.r_direction == 2:
-                self.sendMessage(constants.SERVER_TURN_RIGHT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.r_direction = 3
-                return
+        if self.r_direction == 2:
+            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.r_direction = 3
+            return
 
-            if self.r_direction == 3:
-                return
+        if self.r_direction == 3:
+            return
 
-            if self.r_direction == 4:
-                self.sendMessage(constants.SERVER_TURN_RIGHT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.sendMessage(constants.SERVER_TURN_RIGHT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.r_direction = 3
-                return
+        if self.r_direction == 4:
+            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.r_direction = 3
+            return
 
     def changeDirectionDown(self):
-            if self.r_direction == 1:
-                self.sendMessage(constants.SERVER_TURN_RIGHT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.r_direction = 4
-                return
+        print("Changing Direction to South")
+        if self.r_direction == 1:
+            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.r_direction = 4
+            return
 
-            if self.r_direction == 2:
-                self.sendMessage(constants.SERVER_TURN_LEFT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.r_direction = 4
-                return
+        if self.r_direction == 2:
+            self.sendMessage(constants.SERVER_TURN_LEFT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.r_direction = 4
+            return
 
-            if self.r_direction == 3:
-                self.sendMessage(constants.SERVER_TURN_RIGHT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.sendMessage(constants.SERVER_TURN_RIGHT)
-                received_data = self.receiveMessage()
-                # check if we have received ok
-                self.r_direction = 4
-                return
+        if self.r_direction == 3:
+            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            received_data = self.receiveMessage()
+            # check if we have received ok
+            self.r_direction = 4
+            return
 
-            if self.r_direction == 4:
-                return
+        if self.r_direction == 4:
+            return
 
     def detectObstacle(self):
         if self.r_coords == self.r_previousCoords:
+            print("Obstacle Detected")
             return True
 
     def traverseObstacle(self):
@@ -347,22 +349,24 @@ class RobotConnectionHandler:
 
     def guideToTarget(self):
 
-        if self.r_coords[0] < 0:
-            self.changeDirectionRight()
-            while self.r_coords[0] != 0:
-                self.move()
+        while not self.reachedDestination:
 
-        if self.r_coords[0] > 0:
-            self.changeDirectionLeft()
-            while self.r_coords[0] != 0:
-                self.move()
+            if self.r_coords[0] < 0:
+                self.changeDirectionRight()
+                while self.r_coords[0] != 0:
+                    self.move()
 
-        if self.r_coords[1] < 0:
-            self.changeDirectionUp()
-            while self.r_coords[1] != 0:
-                self.move()
+            if self.r_coords[0] > 0:
+                self.changeDirectionLeft()
+                while self.r_coords[0] != 0:
+                    self.move()
 
-        if self.r_coords[1] > 0:
-            self.changeDirectionDown()
-            while self.r_coords[1] != 0:
-                self.move()
+            if self.r_coords[1] < 0:
+                self.changeDirectionUp()
+                while self.r_coords[1] != 0:
+                    self.move()
+
+            if self.r_coords[1] > 0:
+                self.changeDirectionDown()
+                while self.r_coords[1] != 0:
+                    self.move()
