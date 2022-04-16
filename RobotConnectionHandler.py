@@ -1,5 +1,8 @@
+import logging
+from constants import *
+from logging import *
 
-import constants
+logging.basicConfig(level=logging.DEBUG, filename='test.log')
 
 
 class RobotConnectionHandler:
@@ -17,209 +20,212 @@ class RobotConnectionHandler:
         self.reachedDestination = False
 
     def closeConnection(self):
-        print('Client disconnected:', self.r_sock.getpeername())
+        logging.debug('Client disconnected: {}'.format(self.r_sock.getpeername()))
         self.r_sock.close()
 
     def calculateHash(self, client=False):
-        hashSum = 0
+        hashSum: int = 0
         for char in self.r_username:
             hashSum = hashSum + ord(char)
+        if client:
+            return ((hashSum * 1000) % 65536 + AUTHENTICATIONKEYS[self.r_key][1]) % MOD16
+        return ((hashSum * 1000) % 65536 + AUTHENTICATIONKEYS[self.r_key][0]) % MOD16
 
-        if (client):
-            return ((hashSum * 1000) % 65536 + constants.AUTHENTICATIONKEYS[self.r_key][1]) % 65536
-        return ((hashSum * 1000) % 65536 + constants.AUTHENTICATIONKEYS[self.r_key][0]) % 65536
+    def receiveMessage2(self):
 
-    def receiveMessage(self):
         while True:
             self.r_sock.settimeout(1)
-            received_data = self.r_sock.recv(18).decode()
+            received_data = self.r_sock.recv(1024).decode()
             self.r_pipe += received_data
 
             messageEndIndex = self.r_pipe.find('\a\b')
             if messageEndIndex == -1:
-                pass
+                continue
             else:
                 nextMessage = self.r_pipe[:messageEndIndex]
                 self.r_pipe = self.r_pipe[messageEndIndex + 2:]
-                print(nextMessage)
+                logging.debug("Received message: {}".format(nextMessage))
                 return nextMessage
 
+    def receiveMessage(self, ):
+
+        messageEndIndex = self.r_pipe.find('\a\b')
+        if messageEndIndex == -1:
+            return self.receiveMessage2()
+        else:
+            nextMessage = self.r_pipe[:messageEndIndex]
+            self.r_pipe = self.r_pipe[messageEndIndex + 2:]
+            return nextMessage
+
     def sendMessage(self, message: str):
-        print('Sending Message: ' + message)
-        self.r_sock.sendall(message.encode())
+
+        try:
+            self.r_sock.sendall(message.encode())
+            logging.debug('Sent message: {}'.format(message))
+
+        except BrokenPipeError:
+            logging.debug("Packet could not be sent, Connection has been closed")
 
     def authenticateConnection(self):
+        """
+        Receives a username, validates it.
+        Send request to send key, validates the key
 
-        # Receive Username
+        :return: None
+        """
         self.r_username = self.receiveMessage()
-        if self.r_username is None:
-            self.closeConnection()
-            print("Something went wrong while getting username")
-            return False
-
-        if len(self.r_username) > constants.USERNAME_MAX_LEN:
-            self.sendMessage(constants.SERVER_SYNTAX_ERROR)
+        if len(self.r_username) > USERNAME_MAX_LEN:
+            self.sendMessage(SERVER_SYNTAX_ERROR)
             self.closeConnection()
             return False
 
         # Request Key
-        self.sendMessage(constants.SERVER_KEY_REQUEST)
+        self.sendMessage(SERVER_KEY_REQUEST)
+
         # Receive Keys
         try:
             self.r_key = int(self.receiveMessage())
         except ValueError as e:
-            print(e)
-            self.sendMessage(constants.SERVER_SYNTAX_ERROR)
+            logging.debug(e)
+            self.sendMessage(SERVER_SYNTAX_ERROR)
             self.closeConnection()
-            print("Key is in wrong format")
+            logging.debug("Invalid Key format")
             return False
 
-        if self.r_key is None:
-            self.closeConnection()
-            print("Something went wrong while getting KEY")
-            return False
-
+        # Validate Key
         if type(self.r_key) != int:
-            self.sendMessage(constants.SERVER_SYNTAX_ERROR)
+            self.sendMessage(SERVER_SYNTAX_ERROR)
             self.closeConnection()
             return False
-        # Check Key Range
         if (self.r_key > 4 or self.r_key < 0):
-            self.sendMessage(constants.SERVER_KEY_OUT_OF_RANGE_ERROR)
+            self.sendMessage(SERVER_KEY_OUT_OF_RANGE_ERROR)
             self.closeConnection()
             return False
 
-
-        # Get Hash
+        # Calculate and Send Hash
         self.r_hash = self.calculateHash()
         self.sendMessage(f"{(self.r_hash)}\a\b")
-        clientHashString = self.receiveMessage()
-        if not clientHashString.isnumeric():
-            self.sendMessage(constants.SERVER_SYNTAX_ERROR)
+
+        # Receive client hash and verify
+        self.r_clientHash = self.receiveMessage()
+        if not self.r_clientHash.isnumeric():
+            self.sendMessage(SERVER_SYNTAX_ERROR)
             self.closeConnection()
             return False
 
-
-
-        self.r_clientHash = int(clientHashString)
-
-        if  self.r_clientHash > 65536:
-            self.sendMessage(constants.SERVER_SYNTAX_ERROR)
+        self.r_clientHash = int(self.r_clientHash)
+        if self.r_clientHash > 65536:
+            self.sendMessage(SERVER_SYNTAX_ERROR)
             self.closeConnection()
             return False
 
         if self.r_clientHash != self.calculateHash(client=True):
-            self.sendMessage(constants.SERVER_LOGIN_FAILED)
+            self.sendMessage(SERVER_LOGIN_FAILED)
             self.closeConnection()
-            print("Authentication Failed!")
+            logging.debug("Authentication Failed!")
             return False
 
-
         else:
-            # self.sendMessage(constants.SERVER_OK)
-            self.sendMessage("200 OK\a\b")
-            print("Authentication Complete!")
+            self.sendMessage(SERVER_OK)
+            logging.debug("Authentication Complete!")
             return True
 
-    def extractCoordinates(self, recived_data):
+    def extractCoordinates(self, received_data):
         coordinates = []
-        for item in recived_data.split():
+        for item in received_data.split():
             try:
                 coordinates.append(int(item))
             except ValueError as e:
-                print(e)
+                logging.info(e)
         self.r_previousCoords = self.r_coords
         self.r_coords = coordinates
 
     def tryEveryDirection(self):
 
-        print("Encountered Obstacle without knowing direction")
-        self.sendMessage(constants.SERVER_TURN_RIGHT)
+        logging.debug("Encountered Obstacle without knowing direction")
+        self.sendMessage(SERVER_TURN_RIGHT)
+        received_data = self.receiveMessage()
         self.findCurrentPosition()
 
     def findDirection(self):
-        print("trying to find direction")
         if self.r_coords[0] - self.r_previousCoords[0] == 1:
-            self.r_direction = 1  # right
+            self.r_direction = WEST
         elif self.r_coords[0] - self.r_previousCoords[0] == -1:
-            self.r_direction = 2  # left
+            self.r_direction = EAST
         elif self.r_coords[1] - self.r_previousCoords[1] == 1:
-            self.r_direction = 3  # up
+            self.r_direction = NORTH
         elif self.r_coords[1] - self.r_previousCoords[1] == -1:
-            self.r_direction = 4  # down
+            self.r_direction = SOUTH
         elif  self.r_coords == self.r_previousCoords : # Obstacle encountered in first move
              self.tryEveryDirection()
         else:
-            print("Something went wrong while trying to find direction")
+            logging.debug("Something went wrong while trying to find direction")
             self.closeConnection()
+        logging.debug(self.r_direction)
 
     def findCurrentPosition(self):
-        self.sendMessage(constants.SERVER_MOVE)
+        self.sendMessage(SERVER_TURN_LEFT)
         received_data = self.receiveMessage()
         self.extractCoordinates(received_data)
-
-        self.sendMessage(constants.SERVER_MOVE)
-        received_data = self.receiveMessage()
-        self.r_previousCoords = self.r_coords
-        self.extractCoordinates(received_data)
+        self.move()
         self.findDirection()
         return True
     
     def move(self):
-        self.sendMessage(constants.SERVER_MOVE)
+        self.sendMessage(SERVER_MOVE)
         received_data = self.receiveMessage()
         self.extractCoordinates(received_data)
-
+        logging.debug(self.r_direction)
         if self.detectObstacle():
             self.traverseObstacle()
         self.checkIfReachedDestination()
         
     def checkIfReachedDestination(self):
         if self.r_coords == [0, 0]:
-            print("Reached Origin")
-            self.sendMessage(constants.SERVER_PICK_UP)
+            logging.debug("Reached Origin")
+            self.sendMessage(SERVER_PICK_UP)
             self.reachedDestination = True
             received_data = self.receiveMessage()
-            self.sendMessage(constants.SERVER_LOGOUT)
+            self.sendMessage(SERVER_LOGOUT)
             self.closeConnection()
             return True
 
     def changeDirectionRight(self):
-        print("Changing Direction to East")
+        logging.debug("Changing Direction to East")
         if self.r_direction == 1:
             return
 
         if self.r_direction == 2:
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 1
             return
 
         if self.r_direction == 3:
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 1
             return
 
         if self.r_direction == 4:
-            self.sendMessage(constants.SERVER_TURN_LEFT)
+            self.sendMessage(SERVER_TURN_LEFT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 1
             return
 
     def changeDirectionLeft(self):
-        print("Changing Direction to West")
+        logging.debug("Changing Direction to West")
         if self.r_direction == 1:
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 2
@@ -229,28 +235,28 @@ class RobotConnectionHandler:
             return
 
         if self.r_direction == 3:
-            self.sendMessage(constants.SERVER_TURN_LEFT)
+            self.sendMessage(SERVER_TURN_LEFT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 2
 
         if self.r_direction == 4:
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 2
 
     def changeDirectionUp(self):
-        print("Changing Direction to North")
+        logging.debug("Changing Direction to North")
         if self.r_direction == 1:
-            self.sendMessage(constants.SERVER_TURN_LEFT)
+            self.sendMessage(SERVER_TURN_LEFT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 3
             return
 
         if self.r_direction == 2:
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 3
@@ -260,36 +266,36 @@ class RobotConnectionHandler:
             return
 
         if self.r_direction == 4:
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 3
             return
 
     def changeDirectionDown(self):
-        print("Changing Direction to South")
+        logging.debug("Changing Direction to South")
         if self.r_direction == 1:
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 4
             return
 
         if self.r_direction == 2:
-            self.sendMessage(constants.SERVER_TURN_LEFT)
+            self.sendMessage(SERVER_TURN_LEFT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 4
             return
 
         if self.r_direction == 3:
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
-            self.sendMessage(constants.SERVER_TURN_RIGHT)
+            self.sendMessage(SERVER_TURN_RIGHT)
             received_data = self.receiveMessage()
             # check if we have received ok
             self.r_direction = 4
@@ -300,11 +306,11 @@ class RobotConnectionHandler:
 
     def detectObstacle(self):
         if self.r_coords == self.r_previousCoords:
-            print("Obstacle Detected")
+            logging.debug("Obstacle Detected")
             return True
 
     def traverseObstacle(self):
-        if self.r_direction == 1:
+        if self.r_direction == WEST:
 
             self.changeDirectionUp()
             self.move()
@@ -314,8 +320,8 @@ class RobotConnectionHandler:
             self.changeDirectionDown()
             self.move()
             self.changeDirectionRight()
-
-        elif self.r_direction == 2:
+            logging.debug("Obstacle Traversed")
+        elif self.r_direction == EAST:
 
             self.changeDirectionUp()
             self.move()
@@ -325,8 +331,9 @@ class RobotConnectionHandler:
             self.changeDirectionDown()
             self.move()
             self.changeDirectionLeft()
+            logging.debug("Obstacle Traversed")
 
-        elif self.r_direction == 3:
+        elif self.r_direction == NORTH:
 
             self.changeDirectionLeft()
             self.move()
@@ -336,37 +343,40 @@ class RobotConnectionHandler:
             self.changeDirectionRight()
             self.move()
             self.changeDirectionUp()
+            logging.debug("Obstacle Traversed")
+
+        elif self.r_direction == SOUTH:
+            self.changeDirectionLeft()
+            self.move()
+            self.changeDirectionDown()
+            self.move()
+            self.move()
+            self.changeDirectionRight()
+            self.move()
+            self.changeDirectionDown()
+            logging.debug("Obstacle Traversed")
 
         else:
-            self.changeDirectionLeft()
-            self.move()
-            self.changeDirectionDown()
-            self.move()
-            self.move()
-            self.changeDirectionRight()
-            self.move()
-            self.changeDirectionDown()
+            self.findCurrentPosition()
 
     def guideToTarget(self):
 
-        while not self.reachedDestination:
+        while self.r_coords != [0,0]:
 
             if self.r_coords[0] < 0:
                 self.changeDirectionRight()
-                while self.r_coords[0] != 0:
-                    self.move()
+                self.move()
 
-            if self.r_coords[0] > 0:
-                self.changeDirectionLeft()
-                while self.r_coords[0] != 0:
-                    self.move()
 
             if self.r_coords[1] < 0:
                 self.changeDirectionUp()
-                while self.r_coords[1] != 0:
-                    self.move()
+                self.move()
+
+            if self.r_coords[0] > 0:
+                self.changeDirectionLeft()
+                self.move()
+
 
             if self.r_coords[1] > 0:
                 self.changeDirectionDown()
-                while self.r_coords[1] != 0:
-                    self.move()
+                self.move()

@@ -1,10 +1,10 @@
 # Created by Arpan Tyagi
 # for course BIE-PSI
 # at FIT CVUT
-
+import logging
 import socket
 
-from RobotConnectionHandler import RobotConnectionHandler
+from RobotConnectionHandler import *
 
 HOST = '127.0.0.1'
 PORT = 54321
@@ -19,8 +19,7 @@ def run_server(HOST, PORT):
 
         try:
             client_sock, addr = sock.accept()
-            client_sock.settimeout(1)
-            print('Connection from', addr)
+            logging.debug('Connection from {}'.format(addr))
             robot = RobotConnectionHandler(client_sock)
 
             if robot.authenticateConnection():
@@ -28,8 +27,10 @@ def run_server(HOST, PORT):
                     robot.guideToTarget()
 
         except socket.timeout:
-            print("Socket Timed-Out, Closing Conection")
+            logging.debug("Socket Timed-Out, Closing Conection")
             client_sock.close()
+        except KeyboardInterrupt:
+            logging.debug("Server Stopped by User")
 
 
 
