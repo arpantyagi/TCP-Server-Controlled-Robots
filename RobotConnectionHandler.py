@@ -1,8 +1,11 @@
 import logging
-from constants import *
-from logging import *
+import socket
+import time
+from time import sleep
 
-logging.basicConfig(level=logging.DEBUG, filename='test.log')
+from constants import *
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s: %(message)s')
 
 
 class RobotConnectionHandler:
@@ -20,8 +23,9 @@ class RobotConnectionHandler:
         self.reachedDestination = False
 
     def closeConnection(self):
-        logging.debug('Client disconnected: {}'.format(self.r_sock.getpeername()))
+        logging.debug('Closing Connection with Client: {}'.format(self.r_sock.getpeername()))
         self.r_sock.close()
+        raise RuntimeError()
 
     def calculateHash(self, client=False):
         hashSum: int = 0
@@ -31,27 +35,45 @@ class RobotConnectionHandler:
             return ((hashSum * 1000) % 65536 + AUTHENTICATIONKEYS[self.r_key][1]) % MOD16
         return ((hashSum * 1000) % 65536 + AUTHENTICATIONKEYS[self.r_key][0]) % MOD16
 
-    def receiveMessage2(self):
-
-        while True:
-            self.r_sock.settimeout(1)
-            received_data = self.r_sock.recv(1024).decode()
-            self.r_pipe += received_data
-
-            messageEndIndex = self.r_pipe.find('\a\b')
-            if messageEndIndex == -1:
-                continue
-            else:
-                nextMessage = self.r_pipe[:messageEndIndex]
-                self.r_pipe = self.r_pipe[messageEndIndex + 2:]
-                logging.debug("Received message: {}".format(nextMessage))
-                return nextMessage
-
-    def receiveMessage(self, ):
+    def receiveMessage(self, maxMessageLength=12, timeout=1):
 
         messageEndIndex = self.r_pipe.find('\a\b')
         if messageEndIndex == -1:
-            return self.receiveMessage2()
+            while True:
+                if len(self.r_pipe) > maxMessageLength:
+                    self.sendMessage(SERVER_SYNTAX_ERROR)
+                    self.closeConnection()
+                    raise RuntimeError()
+                self.r_sock.settimeout(timeout)
+                received_data = self.r_sock.recv(1024).decode()
+                self.r_pipe += received_data
+
+                messageEndIndex = self.r_pipe.find('\a\b')
+                if messageEndIndex == -1:
+                    continue
+                else:
+                    nextMessage = self.r_pipe[:messageEndIndex]
+                    self.r_pipe = self.r_pipe[messageEndIndex + 2:]
+                    logging.debug("Received message: {}".format(nextMessage))
+                    if nextMessage == "RECHARGING":
+                        t_end = time.time() + TIMEOUT_RECHARGING
+                        while time.time() < t_end:
+                            try:
+                                self.r_sock.settimeout(5)
+                                status = self.receiveMessage(timeout=5)
+                                if status != 'FULL POWER' and status != '':
+                                    self.sendMessage(SERVER_LOGIC_ERROR)
+                                    self.closeConnection()
+                                    raise RuntimeError()
+                                else:
+                                    break
+                            except socket.timeout as e:
+                                logging.debug("Socket Timed out while waiting for robot to charge")
+                                self.closeConnection()
+                                raise RuntimeError()
+
+                    else:
+                        return nextMessage
         else:
             nextMessage = self.r_pipe[:messageEndIndex]
             self.r_pipe = self.r_pipe[messageEndIndex + 2:]
@@ -73,7 +95,7 @@ class RobotConnectionHandler:
 
         :return: None
         """
-        self.r_username = self.receiveMessage()
+        self.r_username = self.receiveMessage(USERNAME_MAX_LEN)
         if len(self.r_username) > USERNAME_MAX_LEN:
             self.sendMessage(SERVER_SYNTAX_ERROR)
             self.closeConnection()
@@ -97,17 +119,17 @@ class RobotConnectionHandler:
             self.sendMessage(SERVER_SYNTAX_ERROR)
             self.closeConnection()
             return False
-        if (self.r_key > 4 or self.r_key < 0):
+        if self.r_key > 4 or self.r_key < 0:
             self.sendMessage(SERVER_KEY_OUT_OF_RANGE_ERROR)
             self.closeConnection()
             return False
 
         # Calculate and Send Hash
         self.r_hash = self.calculateHash()
-        self.sendMessage(f"{(self.r_hash)}\a\b")
+        self.sendMessage(f"{self.r_hash}\a\b")
 
         # Receive client hash and verify
-        self.r_clientHash = self.receiveMessage()
+        self.r_clientHash = self.receiveMessage(CONFIRMATION_MAX_LEN)
         if not self.r_clientHash.isnumeric():
             self.sendMessage(SERVER_SYNTAX_ERROR)
             self.closeConnection()
@@ -131,20 +153,28 @@ class RobotConnectionHandler:
             return True
 
     def extractCoordinates(self, received_data):
-        coordinates = []
-        for item in received_data.split():
+        coordinatesF = list()
+        coordinates = received_data.split()[1:]
+        if received_data[-1:] == " ":
+            self.sendMessage(SERVER_SYNTAX_ERROR)
+            self.closeConnection()
+            raise RuntimeError
+        for item in coordinates:
             try:
-                coordinates.append(int(item))
+                coordinatesF.append(int(item))
             except ValueError as e:
                 logging.info(e)
+                self.sendMessage(SERVER_SYNTAX_ERROR)
+                self.closeConnection()
+                raise RuntimeError
         self.r_previousCoords = self.r_coords
-        self.r_coords = coordinates
+        self.r_coords = coordinatesF
 
     def tryEveryDirection(self):
 
         logging.debug("Encountered Obstacle without knowing direction")
         self.sendMessage(SERVER_TURN_RIGHT)
-        received_data = self.receiveMessage()
+        self.receiveMessage()
         self.findCurrentPosition()
 
     def findDirection(self):
@@ -156,8 +186,9 @@ class RobotConnectionHandler:
             self.r_direction = NORTH
         elif self.r_coords[1] - self.r_previousCoords[1] == -1:
             self.r_direction = SOUTH
-        elif  self.r_coords == self.r_previousCoords : # Obstacle encountered in first move
-             self.tryEveryDirection()
+        # Obstacle encountered in first move
+        elif self.r_coords == self.r_previousCoords:
+            self.tryEveryDirection()
         else:
             logging.debug("Something went wrong while trying to find direction")
             self.closeConnection()
@@ -185,7 +216,7 @@ class RobotConnectionHandler:
             logging.debug("Reached Origin")
             self.sendMessage(SERVER_PICK_UP)
             self.reachedDestination = True
-            received_data = self.receiveMessage()
+            self.receiveMessage(CLIENT_MESSAGE_MAX_LEN)
             self.sendMessage(SERVER_LOGOUT)
             self.closeConnection()
             return True
@@ -197,24 +228,24 @@ class RobotConnectionHandler:
 
         if self.r_direction == 2:
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 1
             return
 
         if self.r_direction == 3:
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 1
             return
 
         if self.r_direction == 4:
             self.sendMessage(SERVER_TURN_LEFT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 1
             return
@@ -223,10 +254,10 @@ class RobotConnectionHandler:
         logging.debug("Changing Direction to West")
         if self.r_direction == 1:
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 2
             return
@@ -236,13 +267,13 @@ class RobotConnectionHandler:
 
         if self.r_direction == 3:
             self.sendMessage(SERVER_TURN_LEFT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 2
 
         if self.r_direction == 4:
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 2
 
@@ -250,14 +281,14 @@ class RobotConnectionHandler:
         logging.debug("Changing Direction to North")
         if self.r_direction == 1:
             self.sendMessage(SERVER_TURN_LEFT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 3
             return
 
         if self.r_direction == 2:
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 3
             return
@@ -267,10 +298,10 @@ class RobotConnectionHandler:
 
         if self.r_direction == 4:
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 3
             return
@@ -279,24 +310,24 @@ class RobotConnectionHandler:
         logging.debug("Changing Direction to South")
         if self.r_direction == 1:
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 4
             return
 
         if self.r_direction == 2:
             self.sendMessage(SERVER_TURN_LEFT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 4
             return
 
         if self.r_direction == 3:
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.sendMessage(SERVER_TURN_RIGHT)
-            received_data = self.receiveMessage()
+            self.receiveMessage()
             # check if we have received ok
             self.r_direction = 4
             return
@@ -361,12 +392,11 @@ class RobotConnectionHandler:
 
     def guideToTarget(self):
 
-        while self.r_coords != [0,0]:
+        while self.r_coords != [0, 0]:
 
             if self.r_coords[0] < 0:
                 self.changeDirectionRight()
                 self.move()
-
 
             if self.r_coords[1] < 0:
                 self.changeDirectionUp()
@@ -375,7 +405,6 @@ class RobotConnectionHandler:
             if self.r_coords[0] > 0:
                 self.changeDirectionLeft()
                 self.move()
-
 
             if self.r_coords[1] > 0:
                 self.changeDirectionDown()
